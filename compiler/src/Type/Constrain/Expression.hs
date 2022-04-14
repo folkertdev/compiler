@@ -99,9 +99,11 @@ constrain rtv (A.At region expression) expected =
     Can.Case expr branches ->
       constrainCase rtv region expr branches expected
 
-    Can.Let def body ->
-      constrainDef rtv def
-      =<< constrain rtv body expected
+    Can.Let def body -> do
+        body_con <- constrain rtv body expected
+        result <- constrainDef rtv def body_con
+
+        return result
 
     Can.LetRec defs body ->
       constrainRecursiveDefs rtv defs
@@ -364,8 +366,12 @@ constrainCase rtv region expr branches expected =
 
 constrainCaseBranch :: RTV -> Can.CaseBranch -> PExpected Type -> Expected Type -> IO Constraint
 constrainCaseBranch rtv (Can.CaseBranch pattern expr) pExpect bExpect =
-  do  (Pattern.State headers pvars revCons) <-
+  do  
+
+      print ( pattern, pExpect )
+      (Pattern.State headers pvars revCons) <-
         Pattern.add pattern pExpect Pattern.emptyState
+      print ( headers, pvars, revCons )
 
       CLet [] pvars headers (CAnd (reverse revCons))
         <$> constrain rtv expr bExpect
@@ -536,6 +542,8 @@ constrainDef rtv def bodyCon =
           exprCon <-
             constrain rtv expr (NoExpectation resultType)
 
+
+
           return $
             CLet
               { _rigidVars = []
@@ -563,6 +571,8 @@ constrainDef rtv def bodyCon =
           let expected = FromAnnotation name (length typedArgs) TypedBody resultType
           exprCon <-
             constrain newRtv expr expected
+
+          print ( pvars, headers )
 
           return $
             CLet
@@ -610,10 +620,15 @@ recDefsHelp rtv defs bodyCon rigidInfo flexInfo =
     [] ->
       do  let (Info rigidVars rigidCons rigidHeaders) = rigidInfo
           let (Info flexVars  flexCons  flexHeaders ) = flexInfo
-          return $
-            CLet rigidVars [] rigidHeaders CTrue $
-              CLet [] flexVars flexHeaders (CLet [] [] flexHeaders CTrue (CAnd flexCons)) $
-                CAnd [ CAnd rigidCons, bodyCon ]
+
+          print ("===>", rigidVars, rigidHeaders )
+
+          let result = 
+                    CLet rigidVars [] rigidHeaders CTrue $
+                      CLet [] flexVars flexHeaders (CLet [] [] flexHeaders CTrue (CAnd flexCons)) $
+                        CAnd [ CAnd rigidCons, bodyCon ]
+
+          return result 
 
     def : otherDefs ->
       case def of
@@ -653,6 +668,8 @@ recDefsHelp rtv defs bodyCon rigidInfo flexInfo =
               exprCon <-
                 constrain newRtv expr $
                   FromAnnotation name (length typedArgs) TypedBody resultType
+
+              print $ ( "--------> ", pvars, headers, revCons, newRigids ) 
 
               let defCon =
                     CLet

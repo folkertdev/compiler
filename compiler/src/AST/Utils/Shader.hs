@@ -26,7 +26,8 @@ import qualified Data.Name as Name
 newtype Source =
   Source BS.ByteString
 
-
+instance Show Source where 
+    show _ = ""
 
 -- TYPES
 
@@ -37,6 +38,7 @@ data Types =
     , _uniform :: Map.Map Name.Name Type
     , _varying :: Map.Map Name.Name Type
     }
+  deriving Show
 
 
 data Type
@@ -47,6 +49,7 @@ data Type
   | V4
   | M4
   | Texture
+  deriving Show
 
 
 

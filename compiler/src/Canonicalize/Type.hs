@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BangPatterns #-}
 module Canonicalize.Type
   ( toAnnotation
   , canonicalize
@@ -19,6 +20,7 @@ import qualified Reporting.Annotation as A
 import qualified Reporting.Error.Canonicalize as Error
 import qualified Reporting.Result as Result
 
+import Debug.Trace as Debug
 
 
 -- RESULT
@@ -103,7 +105,7 @@ canonicalizeType env region name args info =
   do  cargs <- traverse (canonicalize env) args
       case info of
         Env.Alias arity home argNames aliasedType ->
-          checkArity arity region name args $
+          checkArity arity region name args $ Debug.traceShowId $
             Can.TAlias home name (zip argNames cargs) (Can.Holey aliasedType)
 
         Env.Union arity home ->

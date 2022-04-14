@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BangPatterns #-}
 module Type.Solve
   ( run
   )
@@ -25,6 +26,7 @@ import qualified Type.Error as ET
 import qualified Type.Unify as Unify
 import qualified Type.UnionFind as UF
 
+import qualified Debug.Trace as Debug
 
 
 -- RUN SOLVER
@@ -33,6 +35,8 @@ import qualified Type.UnionFind as UF
 run :: Constraint -> IO (Either (NE.List Error.Error) (Map.Map Name.Name Can.Annotation))
 run constraint =
   do  pools <- MVector.replicate 8 []
+
+      print constraint
 
       (State env _ errors) <-
         solve Map.empty outermostRank pools emptyState constraint
@@ -73,7 +77,7 @@ data State =
 
 
 solve :: Env -> Int -> Pools -> State -> Constraint -> IO State
-solve env rank pools state constraint =
+solve env rank pools state constraint = do
   case constraint of
     CTrue ->
       return state
@@ -82,7 +86,8 @@ solve env rank pools state constraint =
       return (state { _env = env })
 
     CEqual region category tipe expectation ->
-      do  actual <- typeToVariable rank pools tipe
+      do  
+          actual <- typeToVariable rank pools tipe
           expected <- expectedToVariable rank pools expectation
           answer <- Unify.unify actual expected
           case answer of
@@ -97,7 +102,20 @@ solve env rank pools state constraint =
                       Error.typeReplace expectation expectedType
 
     CLocal region name expectation ->
-      do  actual <- makeCopy rank pools (env ! name)
+      do  
+          foobar <- Type.toErrorType (env ! name)
+          putStrLn "" 
+          print ("Copy of " ++ show name ++ ":" ++ show foobar)
+          putStrLn "" 
+
+          actual <- makeCopy rank pools (env ! name)
+
+          -- foobar <- Type.toErrorType actual 
+          -- print ("copied " ++ show name ++ ":" ++ show foobar)
+
+          content <- UF.get actual
+
+
           expected <- expectedToVariable rank pools expectation
           answer <- Unify.unify actual expected
           case answer of
@@ -145,18 +163,20 @@ solve env rank pools state constraint =
       foldM (solve env rank pools) state constraints
 
     CLet [] flexs _ headerCon CTrue ->
-      do  introduce rank pools flexs
+      do  
+          introduce rank pools flexs
           solve env rank pools state headerCon
 
     CLet [] [] header headerCon subCon ->
-      do  state1 <- solve env rank pools state headerCon
+      do  
+          state1 <- solve env rank pools state headerCon
           locals <- traverse (A.traverse (typeToVariable rank pools)) header
           let newEnv = Map.union env (Map.map A.toValue locals)
           state2 <- solve newEnv rank pools state1 subCon
           foldM occurs state2 $ Map.toList locals
 
     CLet rigids flexs header headerCon subCon ->
-      do
+      do  
           -- work in the next pool to localize header
           let nextRank = rank + 1
           let poolsLength = MVector.length pools
@@ -167,19 +187,28 @@ solve env rank pools state constraint =
 
           -- introduce variables
           let vars = rigids ++ flexs
-          forM_ vars $ \var ->
+          forM_ vars $ \var -> do
             UF.modify var $ \(Descriptor content _ mark copy) ->
               Descriptor content nextRank mark copy
+            -- content <- UF.get var
           MVector.write nextPools nextRank vars
 
           -- run solver in next pool
           locals <- traverse (A.traverse (typeToVariable nextRank nextPools)) header
+
+
+
           (State savedEnv mark errors) <-
             solve env nextRank nextPools state headerCon
+
+
+
+          myVars <- MVector.read nextPools nextRank
 
           let youngMark = mark
           let visitMark = nextMark youngMark
           let finalMark = nextMark visitMark
+
 
           -- pop pool
           generalize youngMark visitMark nextRank nextPools
@@ -188,7 +217,12 @@ solve env rank pools state constraint =
           -- check that things went well
           mapM_ isGeneric rigids
 
-          let newEnv = Map.union env (Map.map A.toValue locals)
+          let newThings = (Map.map A.toValue locals)
+          let newEnv = Map.union env newThings
+
+          print $ ( "saved", savedEnv )
+          print $ ( "new", newEnv )
+
           let tempState = State savedEnv finalMark errors
           newState <- solve newEnv rank nextPools tempState subCon
 
@@ -260,6 +294,7 @@ occurs state (name, A.At region variable) =
         then
           do  errorType <- Type.toErrorType variable
               (Descriptor _ rank mark copy) <- UF.get variable
+              print ("occurs", variable, rank)
               UF.set variable (Descriptor Error rank mark copy)
               return $ addError state (Error.InfiniteType region name errorType)
         else
@@ -276,14 +311,37 @@ This sorts variables into the young and old pools accordingly.
 generalize :: Mark -> Mark -> Int -> Pools -> IO ()
 generalize youngMark visitMark youngRank pools =
   do  youngVars <- MVector.read pools youngRank
+
       rankTable <- poolToRankTable youngMark youngRank youngVars
+
+      Vector.imapM_ (\rank table -> mapM_ (\v -> do
+        (Descriptor _ oldRank _ _) <- UF.get v
+        return () 
+        ) table) rankTable
+
+      parents <- mapM (mapM UF.repr) rankTable
+
+      Vector.imapM_ (\rank table -> mapM_ (\v -> do
+        (Descriptor _ oldRank _ _) <- UF.get v
+        return () 
+        ) table) rankTable
 
       -- get the ranks right for each entry.
       -- start at low ranks so that we only have to pass
       -- over the information once.
+
       Vector.imapM_
-        (\rank table -> mapM_ (adjustRank youngMark visitMark rank) table)
+        (\rank table -> 
+            let helper v = adjustRank youngMark visitMark rank v 
+            in do
+                mapM_ helper table
+        )
         rankTable
+
+      !foo <- Vector.imapM_ (\rank table -> mapM_ (\v -> do
+        (Descriptor _ oldRank _ _) <- UF.get v
+        return ()
+        ) table) rankTable
 
       -- For variables that have rank lowerer than youngRank, register them in
       -- the appropriate old pool if they are not redundant.
@@ -305,9 +363,12 @@ generalize youngMark visitMark youngRank pools =
               then return ()
               else
                 do  (Descriptor content rank mark copy) <- UF.get var
+
                     if rank < youngRank
                       then MVector.modify pools (var:) rank
-                      else UF.set var $ Descriptor content noRank mark copy
+                      else do
+                        print ("Generalized " ++ show var ++ ":" ++ show rank ++ " >= " ++ show youngRank)
+                        UF.set var $ Descriptor content noRank mark copy
 
 
 poolToRankTable :: Mark -> Int -> [Variable] -> IO (Vector.Vector [Variable])
@@ -331,22 +392,26 @@ poolToRankTable youngMark youngRank youngInhabitants =
 -- This way the outermost rank is representative of the entire structure.
 --
 adjustRank :: Mark -> Mark -> Int -> Variable -> IO Int
-adjustRank youngMark visitMark groupRank var =
+adjustRank youngMark visitMark groupRank var = do
   do  (Descriptor content rank mark copy) <- UF.get var
+
       if mark == youngMark then
           do  -- Set the variable as marked first because it may be cyclic.
               UF.set var $ Descriptor content rank visitMark copy
               maxRank <- adjustRankContent youngMark visitMark groupRank content
+              print ("Adjust Rank for " ++ show var ++ " to " ++ show maxRank)
               UF.set var $ Descriptor content maxRank visitMark copy
               return maxRank
 
-        else if mark == visitMark then
+        else if mark == visitMark then do 
           return rank
 
         else
-          do  let minRank = min groupRank rank
+          do  
+              let minRank = min groupRank rank
               -- TODO how can minRank ever be groupRank?
               UF.set var $ Descriptor content minRank visitMark copy
+              print ("Adjust Rank for " ++ show var ++ " to " ++ show minRank)
               return minRank
 
 
@@ -356,7 +421,7 @@ adjustRankContent youngMark visitMark groupRank content =
     go = adjustRank youngMark visitMark groupRank
   in
     case content of
-      FlexVar _ ->
+      FlexVar _ -> do
           return groupRank
 
       FlexSuper _ _ ->
@@ -370,19 +435,28 @@ adjustRankContent youngMark visitMark groupRank content =
 
       Structure flatType ->
         case flatType of
-          App1 _ _ args ->
-            foldM (\rank arg -> max rank <$> go arg) outermostRank args
+          App1 _ _ args -> do
+            result <- foldM (\rank arg -> max rank <$> go arg) outermostRank args
+            return result 
 
-          Fun1 arg result ->
-              max <$> go arg <*> go result
+          Fun1 arg result -> do
+            
+            a <- go arg
+            b <- go result 
+
+            return $ max a b
+            
+              -- max <$> go arg <*> go result
 
           EmptyRecord1 ->
               -- THEORY: an empty record never needs to get generalized
               return outermostRank
 
           Record1 fields extension ->
-              do  extRank <- go extension
-                  foldM (\rank field -> max rank <$> go field) extRank fields
+              do    (Descriptor content rank _ _) <- UF.get extension 
+                    extRank <- go extension
+                    result <- foldM (\rank field -> max rank <$> go field) extRank fields
+                    return result
 
           Unit1 ->
               -- THEORY: a unit never needs to get generalized
@@ -412,11 +486,11 @@ adjustRankContent youngMark visitMark groupRank content =
 
 introduce :: Int -> Pools -> [Variable] -> IO ()
 introduce rank pools variables =
-  do  MVector.modify pools (variables++) rank
-      forM_ variables $ \var ->
+  do  
+      MVector.modify pools (variables++) rank
+      forM_ variables $ \var -> do
         UF.modify var $ \(Descriptor content _ mark copy) ->
           Descriptor content rank mark copy
-
 
 
 -- TYPE TO VARIABLE
@@ -436,14 +510,15 @@ typeToVariable rank pools tipe =
 --
 typeToVar :: Int -> Pools -> Map.Map Name.Name Variable -> Type -> IO Variable
 typeToVar rank pools aliasDict tipe =
-  let go = typeToVar rank pools aliasDict in
+  let go = typeToVar rank pools aliasDict in do
   case tipe of
     VarN v ->
       return v
 
     AppN home name args ->
       do  argVars <- traverse go args
-          register rank pools (Structure (App1 home name argVars))
+          var <- register rank pools (Structure (App1 home name argVars))
+          return var
 
     FunN a b ->
       do  aVar <- go a
@@ -451,17 +526,19 @@ typeToVar rank pools aliasDict tipe =
           register rank pools (Structure (Fun1 aVar bVar))
 
     AliasN home name args aliasType ->
-      do  argVars <- traverse (traverse go) args
+      do  
+          argVars <- traverse (traverse go) args
           aliasVar <- typeToVar rank pools (Map.fromList argVars) aliasType
           register rank pools (Alias home name argVars aliasVar)
 
-    PlaceHolder name ->
+    PlaceHolder name ->do
       return (aliasDict ! name)
 
     RecordN fields ext ->
       do  fieldVars <- traverse go fields
           extVar <- go ext
-          register rank pools (Structure (Record1 fieldVars extVar))
+          var<- register rank pools (Structure (Record1 fieldVars extVar))
+          return var
 
     EmptyRecordN ->
       register rank pools emptyRecord1
@@ -478,7 +555,9 @@ typeToVar rank pools aliasDict tipe =
 
 register :: Int -> Pools -> Content -> IO Variable
 register rank pools content =
-  do  var <- UF.fresh (Descriptor content rank noMark Nothing)
+  do  
+      var <- UF.fresh (Descriptor content rank noMark Nothing)
+      print ("Rank: " ++ show var ++ show rank)
       MVector.modify pools (var:) rank
       return var
 
@@ -574,7 +653,8 @@ srcFieldTypeToVar rank pools flexVars (Can.FieldType _ srcTipe) =
 
 makeCopy :: Int -> Pools -> Variable -> IO Variable
 makeCopy rank pools var =
-  do  copy <- makeCopyHelp rank pools var
+  do  
+      copy <- makeCopyHelp rank pools var
       restore var
       return copy
 
@@ -584,16 +664,20 @@ makeCopyHelp maxRank pools variable =
   do  (Descriptor content rank _ maybeCopy) <- UF.get variable
 
       case maybeCopy of
-        Just copy ->
+        Just copy -> do
           return copy
 
         Nothing ->
-          if rank /= noRank then
+          if rank /= noRank then do
+            putStrLn ("For variable " ++ show variable ++ " rank /= noRank")
             return variable
 
           else
-            do  let makeDescriptor c = Descriptor c maxRank noMark Nothing
+            do  
+                
+                let makeDescriptor c = Descriptor c maxRank noMark Nothing
                 copy <- UF.fresh $ makeDescriptor content
+
                 MVector.modify pools (copy:) maxRank
 
                 -- Link the original variable to the new variable. This lets us
@@ -648,7 +732,8 @@ restore variable =
           return ()
 
         Just _ ->
-          do  UF.set variable $ Descriptor content noRank noMark Nothing
+          do  
+              UF.set variable $ Descriptor content noRank noMark Nothing
               restoreContent content
 
 

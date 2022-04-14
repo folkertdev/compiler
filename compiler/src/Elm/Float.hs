@@ -26,6 +26,9 @@ type Float =
 
 data ELM_FLOAT
 
+instance Show (Utf8.Utf8 ELM_FLOAT) where 
+    show = Utf8.toChars 
+
 
 
 -- HELPERS

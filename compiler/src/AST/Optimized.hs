@@ -113,13 +113,17 @@ data Decider a
       , _tests :: [(DT.Test, Decider a)]
       , _fallback :: Decider a
       }
-  deriving (Eq)
+  deriving (Show, Eq)
 
 
 data Choice
   = Inline Expr
   | Jump Int
 
+
+instance Show Choice where
+    show (Inline e) = "< some inlined expression >"
+    show (Jump v) = "Jump " ++ show v
 
 
 -- OBJECT GRAPH

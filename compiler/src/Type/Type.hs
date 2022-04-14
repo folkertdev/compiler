@@ -52,9 +52,9 @@ import qualified Type.UnionFind as UF
 data Constraint
   = CTrue
   | CSaveTheEnvironment
-  | CEqual A.Region E.Category Type (E.Expected Type)
+  | CEqual   A.Region E.Category Type           (E.Expected Type)
+  | CForeign A.Region Name.Name  Can.Annotation (E.Expected Type)
   | CLocal A.Region Name.Name (E.Expected Type)
-  | CForeign A.Region Name.Name Can.Annotation (E.Expected Type)
   | CPattern A.Region E.PCategory Type (E.PExpected Type)
   | CAnd [Constraint]
   | CLet
@@ -64,6 +64,7 @@ data Constraint
       , _headerCon :: Constraint
       , _bodyCon :: Constraint
       }
+  deriving (Show)
 
 
 exists :: [Variable] -> Constraint -> Constraint
@@ -86,6 +87,7 @@ data FlatType
     | Record1 (Map.Map Name.Name Variable) Variable
     | Unit1
     | Tuple1 Variable Variable (Maybe Variable)
+    deriving (Show)
 
 
 data Type
@@ -98,6 +100,7 @@ data Type
     | RecordN (Map.Map Name.Name Type) Type
     | UnitN
     | TupleN Type Type (Maybe Type)
+    deriving (Show) 
 
 
 
@@ -111,6 +114,7 @@ data Descriptor =
     , _mark :: Mark
     , _copy :: Maybe Variable
     }
+    deriving (Show)
 
 
 data Content
@@ -121,6 +125,7 @@ data Content
     | Structure FlatType
     | Alias ModuleName.Canonical Name.Name [(Name.Name,Variable)] Variable
     | Error
+    deriving (Show)
 
 
 data SuperType
@@ -128,7 +133,7 @@ data SuperType
   | Comparable
   | Appendable
   | CompAppend
-  deriving (Eq)
+  deriving (Eq, Show)
 
 
 makeDescriptor :: Content -> Descriptor
@@ -155,7 +160,7 @@ outermostRank =
 
 
 newtype Mark = Mark Word32
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
 
 
 noMark :: Mark
@@ -260,7 +265,7 @@ texture = AppN ModuleName.texture "Texture" []
 
 
 mkFlexVar :: IO Variable
-mkFlexVar =
+mkFlexVar = do
   UF.fresh flexVarDescriptor
 
 
@@ -307,9 +312,9 @@ nameToFlex name =
 
 
 nameToRigid :: Name.Name -> IO Variable
-nameToRigid name =
-  UF.fresh $ makeDescriptor $
-    maybe RigidVar RigidSuper (toSuper name) name
+nameToRigid name = do
+  var <- UF.fresh $ makeDescriptor $ maybe RigidVar RigidSuper (toSuper name) name
+  return var
 
 
 toSuper :: Name.Name -> Maybe SuperType
@@ -479,7 +484,7 @@ contentToErrorType variable content =
               liftIO $ UF.modify variable (\desc -> desc { _content = FlexSuper super (Just name) })
               return (ET.FlexSuper (superToSuper super) name)
 
-    RigidVar name ->
+    RigidVar name -> do
         return (ET.RigidVar name)
 
     RigidSuper super name ->
@@ -510,7 +515,9 @@ termToErrorType term =
       ET.Type home name <$> traverse variableToErrorType args
 
     Fun1 a b ->
-      do  arg <- variableToErrorType a
+      do  
+          liftIO $ print ("Function " ++ ": " ++ show b)
+          arg <- variableToErrorType a
           result <- variableToErrorType b
           return $
             case result of

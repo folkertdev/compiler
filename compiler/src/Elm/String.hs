@@ -33,6 +33,10 @@ type String =
 data ELM_STRING
 
 
+instance Show (Utf8.Utf8 ELM_STRING) where 
+    show = Utf8.toChars 
+
+
 
 -- HELPERS
 

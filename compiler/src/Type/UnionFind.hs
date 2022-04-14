@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -funbox-strict-fields #-}
 {-# LANGUAGE BangPatterns #-}
 module Type.UnionFind
   ( Point
@@ -9,6 +8,7 @@ module Type.UnionFind
   , get
   , set
   , modify
+  , repr
   )
   where
 
@@ -31,20 +31,37 @@ Compared to the Haskell implementation, the major changes here include:
 import Control.Monad ( when )
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.Word (Word32)
+import System.IO.Unsafe (unsafePerformIO)
 
 
 
 -- POINT
 
 
-newtype Point a =
-  Pt (IORef (PointInfo a))
+data Point a =
+  Pt Int (IORef (PointInfo a)) 
   deriving Eq
+
+instance Show (Point a) where 
+    -- show (Pt identifier _) = "<" ++ show identifier ++ ">" 
+    show (Pt identifier _) = "( ID " ++ show identifier ++ " )" 
 
 
 data PointInfo a
   = Info {-# UNPACK #-} !(IORef Word32) {-# UNPACK #-} !(IORef a)
   | Link {-# UNPACK #-} !(Point a)
+
+
+identifierSource :: IORef Int
+{-# NOINLINE identifierSource #-}
+identifierSource = unsafePerformIO (newIORef 0)
+
+increment :: IORef Int -> IO Int 
+increment ref = do
+    current <- readIORef ref 
+    writeIORef ref (current + 1)
+
+    return current
 
 
 
@@ -56,17 +73,19 @@ fresh value =
   do  weight <- newIORef 1
       desc <- newIORef value
       link <- newIORef (Info weight desc)
-      return (Pt link)
+      identifier <- increment identifierSource
+      let pt = Pt identifier link 
+      return pt
 
 
 repr :: Point a -> IO (Point a)
-repr point@(Pt ref) =
+repr point@(Pt _ ref) =
   do  pInfo <- readIORef ref
       case pInfo of
         Info _ _ ->
           return point
 
-        Link point1@(Pt ref1) ->
+        Link point1@(Pt _ ref1) ->
           do  point2 <- repr point1
               when (point2 /= point1) $
                 do  pInfo1 <- readIORef ref1
@@ -75,13 +94,13 @@ repr point@(Pt ref) =
 
 
 get :: Point a -> IO a
-get point@(Pt ref) =
+get point@(Pt _ ref) =
   do  pInfo <- readIORef ref
       case pInfo of
         Info _ descRef ->
           readIORef descRef
 
-        Link (Pt ref1) ->
+        Link (Pt _ ref1) ->
           do  link' <- readIORef ref1
               case link' of
                 Info _ descRef ->
@@ -92,13 +111,14 @@ get point@(Pt ref) =
 
 
 set :: Point a -> a -> IO ()
-set point@(Pt ref) newDesc =
-  do  pInfo <- readIORef ref
+set point@(Pt _ ref) newDesc =
+  do  
+      pInfo <- readIORef ref
       case pInfo of
         Info _ descRef ->
           writeIORef descRef newDesc
 
-        Link (Pt ref1) ->
+        Link (Pt _ ref1) ->
           do  link' <- readIORef ref1
               case link' of
                 Info _ descRef ->
@@ -109,17 +129,21 @@ set point@(Pt ref) newDesc =
                       set newPoint newDesc
 
 
-modify :: Point a -> (a -> a) -> IO ()
-modify point@(Pt ref) func =
+modify :: Show a => Point a -> (a -> a) -> IO ()
+modify point@(Pt var ref) func =
   do  pInfo <- readIORef ref
+
+      pInfo <- readIORef ref
       case pInfo of
-        Info _ descRef ->
+        Info _ descRef -> do
+          old <- readIORef descRef
           modifyIORef' descRef func
 
-        Link (Pt ref1) ->
+        Link (Pt _ ref1) ->
           do  link' <- readIORef ref1
               case link' of
-                Info _ descRef ->
+                Info _ descRef -> do
+                  old <- readIORef descRef
                   modifyIORef' descRef func
 
                 Link _ ->
@@ -127,13 +151,15 @@ modify point@(Pt ref) func =
                       modify newPoint func
 
 
-union :: Point a -> Point a -> a -> IO ()
+union :: Show a => Point a -> Point a -> a -> IO ()
 union p1 p2 newDesc =
-  do  point1@(Pt ref1) <- repr p1
-      point2@(Pt ref2) <- repr p2
+  do  
+      point1@(Pt _ ref1) <- repr p1
+      point2@(Pt _ ref2) <- repr p2
 
       Info w1 d1 <- readIORef ref1
       Info w2 d2 <- readIORef ref2
+
 
       if point1 == point2
         then writeIORef d1 newDesc
@@ -162,7 +188,7 @@ equivalent p1 p2 =
 
 
 redundant :: Point a -> IO Bool
-redundant (Pt ref) =
+redundant (Pt _ ref) =
   do  pInfo <- readIORef ref
       case pInfo of
         Info _ _ ->

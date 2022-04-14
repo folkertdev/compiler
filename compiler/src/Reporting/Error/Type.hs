@@ -54,6 +54,7 @@ data Expected tipe
   = NoExpectation tipe
   | FromContext A.Region Context tipe
   | FromAnnotation Name.Name Int SubContext tipe
+  deriving (Show)
 
 
 data Context
@@ -70,12 +71,14 @@ data Context
   | RecordUpdateKeys Name.Name (Map.Map Name.Name Can.FieldUpdate)
   | RecordUpdateValue Name.Name
   | Destructure
+  deriving (Show)
 
 
 data SubContext
   = TypedIfBranch Index.ZeroBased
   | TypedCaseBranch Index.ZeroBased
   | TypedBody
+  deriving (Show)
 
 
 data MaybeName
@@ -83,6 +86,7 @@ data MaybeName
   | CtorName Name.Name
   | OpName Name.Name
   | NoName
+  deriving (Show)
 
 
 data Category
@@ -104,6 +108,7 @@ data Category
   | Effects
   | Local Name.Name
   | Foreign Name.Name
+  deriving (Show)
 
 
 
@@ -113,6 +118,7 @@ data Category
 data PExpected tipe
   = PNoExpectation tipe
   | PFromContext A.Region PContext tipe
+  deriving (Show)
 
 
 data PContext
@@ -121,6 +127,7 @@ data PContext
   | PCtorArg Name.Name Index.ZeroBased
   | PListEntry Index.ZeroBased
   | PTail
+  deriving (Show)
 
 
 data PCategory
@@ -133,6 +140,7 @@ data PCategory
   | PStr
   | PChr
   | PBool
+  deriving (Show)
 
 
 

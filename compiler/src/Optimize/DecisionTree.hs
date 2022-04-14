@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BangPatterns #-}
 module Optimize.DecisionTree
   ( DecisionTree(..)
   , compile
@@ -34,6 +35,7 @@ import qualified Elm.ModuleName as ModuleName
 import qualified Elm.String as ES
 import qualified Reporting.Annotation as A
 
+import qualified Debug.Trace as Debug
 
 
 -- COMPILE CASES
@@ -68,7 +70,7 @@ data DecisionTree
       , _edges :: [(Test, DecisionTree)]
       , _default :: Maybe DecisionTree
       }
-  deriving (Eq)
+  deriving (Eq, Show)
 
 
 data Test
@@ -80,14 +82,14 @@ data Test
   | IsChr ES.String
   | IsStr ES.String
   | IsBool Bool
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
 
 
 data Path
   = Index Index.ZeroBased Path
   | Unbox Path
   | Empty
-  deriving (Eq)
+  deriving (Eq, Show)
 
 
 
@@ -99,6 +101,7 @@ data Branch =
     { _goal :: Int
     , _patterns :: [(Path, Can.Pattern)]
     }
+    deriving (Show)
 
 
 toDecisionTree :: [Branch] -> DecisionTree
@@ -116,11 +119,14 @@ toDecisionTree rawBranches =
           path =
               pickPath branches
 
+          -- !foo = Debug.traceShowId (branches, path)
+
           (edges, fallback) =
               gatherEdges branches path
 
           decisionEdges =
               map (second toDecisionTree) edges
+
         in
           case (decisionEdges, fallback) of
             ([(_tag, decisionTree)], []) ->
@@ -256,7 +262,7 @@ us something like ("x" => value.0.0)
 -}
 checkForMatch :: [Branch] -> Maybe Int
 checkForMatch branches =
-  case branches of
+  case  branches of
     Branch goal patterns : _ | all (not . needsTests . snd) patterns ->
         Just goal
 
@@ -271,12 +277,14 @@ checkForMatch branches =
 gatherEdges :: [Branch] -> Path -> ([(Test, [Branch])], [Branch])
 gatherEdges branches path =
   let
-    relevantTests =
+    relevantTests = 
         testsAtPath path branches
+
+    
 
     allEdges =
         map (edgesFor path branches) relevantTests
-
+    
     fallbacks =
         if isComplete relevantTests then
           []
@@ -427,7 +435,7 @@ toRelevantBranch test path branch@(Branch goal pathPatterns) =
 
           Can.PInt int ->
               case test of
-                IsInt testInt | int == testInt ->
+                IsInt testInt | int == testInt -> 
                   Just (Branch goal (start ++ end))
 
                 _ ->

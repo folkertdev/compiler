@@ -25,8 +25,11 @@ import Type.Type (Type(..), Constraint(..), (==>), mkFlexVar, nameToRigid, never
 constrain :: Can.Module -> IO Constraint
 constrain (Can.Module home _ _ decls _ _ _ effects) =
   case effects of
-    Can.NoEffects ->
-      constrainDecls decls CSaveTheEnvironment
+    Can.NoEffects -> do
+      constraint <- constrainDecls decls CSaveTheEnvironment
+      print constraint
+
+      return constraint
 
     Can.Ports ports ->
       Map.foldrWithKey letPort (constrainDecls decls CSaveTheEnvironment) ports

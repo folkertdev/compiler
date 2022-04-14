@@ -134,6 +134,9 @@ data Canonical =
     , _module :: !Name.Name
     }
 
+instance Show Canonical where 
+    show (Canonical package mod) = show mod 
+
 
 
 -- INSTANCES

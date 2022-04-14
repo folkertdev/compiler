@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
+{-# LANGUAGE BangPatterns #-}
 module Optimize.Case
   ( optimize
   )
@@ -15,6 +16,7 @@ import qualified AST.Canonical as Can
 import qualified AST.Optimized as Opt
 import qualified Optimize.DecisionTree as DT
 
+import qualified Debug.Trace as Debug
 
 
 -- OPTIMIZE A CASE EXPRESSION
@@ -26,7 +28,8 @@ optimize temp root optBranches =
     (patterns, indexedBranches) =
       unzip (zipWith indexify [0..] optBranches)
 
-    decider = treeToDecider (DT.compile patterns)
+    decisionTree = Debug.traceShowId (DT.compile patterns)
+    decider = treeToDecider decisionTree
     targetCounts = countTargets decider
 
     (choices, maybeJumps) =

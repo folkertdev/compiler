@@ -105,14 +105,18 @@ data Expr_
   | Unit
   | Tuple Expr Expr (Maybe Expr)
   | Shader Shader.Source Shader.Types
+  deriving (Show)
 
 
 data CaseBranch =
   CaseBranch Pattern Expr
+  deriving (Show)
 
 
 data FieldUpdate =
   FieldUpdate A.Region Expr
+  deriving (Show)
+    
 
 
 
@@ -122,6 +126,7 @@ data FieldUpdate =
 data Def
   = Def (A.Located Name) [Pattern] Expr
   | TypedDef (A.Located Name) FreeVars [(Pattern, Type)] Expr Type
+  deriving (Show)
 
 
 
@@ -132,6 +137,7 @@ data Decls
   = Declare Def Decls
   | DeclareRec Def [Def] Decls
   | SaveTheEnvironment
+  deriving (Show)
 
 
 
@@ -167,6 +173,8 @@ data Pattern_
       -- CACHE _p_index to replace _p_name in PROD code gen
       -- CACHE _p_opts to allocate less in PROD code gen
       -- CACHE _p_alts and _p_numAlts for exhaustiveness checker
+  deriving (Show)
+
 
 
 data PatternCtorArg =
@@ -175,6 +183,8 @@ data PatternCtorArg =
     , _type :: Type             -- CACHE for type inference
     , _arg :: Pattern
     }
+  deriving (Show)
+
 
 
 
@@ -182,7 +192,7 @@ data PatternCtorArg =
 
 
 data Annotation = Forall FreeVars Type
-  deriving (Eq)
+  deriving (Eq, Show)
 
 
 type FreeVars = Map.Map Name ()
@@ -196,17 +206,17 @@ data Type
   | TUnit
   | TTuple Type Type (Maybe Type)
   | TAlias ModuleName.Canonical Name [(Name, Type)] AliasType
-  deriving (Eq)
+  deriving (Eq, Show)
 
 
 data AliasType
   = Holey Type
   | Filled Type
-  deriving (Eq)
+  deriving (Eq, Show)
 
 
 data FieldType = FieldType {-# UNPACK #-} !Word16 Type
-  deriving (Eq)
+  deriving (Eq, Show)
 
 
 -- NOTE: The Word16 marks the source order, but it may not be available
@@ -247,7 +257,7 @@ data Alias = Alias [Name] Type
 
 
 data Binop = Binop_ Binop.Associativity Binop.Precedence Name
-  deriving (Eq)
+  deriving (Eq, Show)
 
 
 data Union =
@@ -257,18 +267,18 @@ data Union =
     , _u_numAlts :: Int -- CACHE numAlts for exhaustiveness checking
     , _u_opts :: CtorOpts -- CACHE which optimizations are available
     }
-  deriving (Eq)
+  deriving (Eq, Show)
 
 
 data CtorOpts
   = Normal
   | Enum
   | Unbox
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
 
 
 data Ctor = Ctor Name Index.ZeroBased Int [Type] -- CACHE length args
-  deriving (Eq)
+  deriving (Eq, Show)
 
 
 

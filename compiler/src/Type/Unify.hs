@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
-{-# LANGUAGE OverloadedStrings, Rank2Types #-}
+{-# LANGUAGE OverloadedStrings, Rank2Types, BangPatterns #-}
 module Type.Unify
   ( Answer(..)
   , unify
@@ -17,6 +17,8 @@ import Type.Type as Type
 import qualified Type.UnionFind as UF
 
 
+import Debug.Trace as Debug
+
 
 -- UNIFY
 
@@ -27,12 +29,21 @@ data Answer
 
 
 unify :: Variable -> Variable -> IO Answer
-unify v1 v2 =
+unify v1 v2 = do
+  -- putStrLn ("UNIFY: "  ++ show v1 ++ " ~ " ++ show v2)
+  decs1 <- UF.get v1
+  decs2 <- UF.get v2
+  -- print decs1
+  -- print decs2
+  --putStrLn "------\n"
   case guardedUnify v1 v2 of
     Unify k ->
       k [] onSuccess $ \vars () ->
         do  t1 <- Type.toErrorType v1
             t2 <- Type.toErrorType v2
+            print ("----> ", v1, v2)
+            print ("----> ", t1, t2)
+            error "fail here"
             UF.union v1 v2 errorDescriptor
             return (Err vars t1 t2)
 
@@ -183,7 +194,9 @@ subUnify var1 var2 =
 
 
 actuallyUnify :: Context -> Unify ()
-actuallyUnify context@(Context _ (Descriptor firstContent _ _ _) _ (Descriptor secondContent _ _ _)) =
+actuallyUnify context@(Context v1 (Descriptor firstContent _ _ _) v2 (Descriptor secondContent _ _ _)) =
+  --  let !foo = Debug.traceShowId (v1, firstContent, v2, secondContent) 
+  --  in
   case firstContent of
     FlexVar _ ->
         unifyFlex context firstContent secondContent
@@ -250,6 +263,8 @@ unifyFlex context content otherContent =
 
 unifyRigid :: Context -> Maybe SuperType -> Content -> Content -> Unify ()
 unifyRigid context maybeSuper content otherContent =
+  let !foo = Debug.traceShow "----------------> unify rigid" (_first context)
+  in
   case otherContent of
     FlexVar _ ->
         merge context content
@@ -621,6 +636,8 @@ unifyRecord context (RecordStructure fields1 ext1) (RecordStructure fields2 ext2
     sharedFields = Map.intersectionWith (,) fields1 fields2
     uniqueFields1 = Map.difference fields1 fields2
     uniqueFields2 = Map.difference fields2 fields1
+
+    -- !foo = Debug.traceShowId (sharedFields, uniqueFields1, uniqueFields2)
   in
   if Map.null uniqueFields1 then
 
@@ -633,7 +650,8 @@ unifyRecord context (RecordStructure fields1 ext1) (RecordStructure fields2 ext2
           subUnify ext1 subRecord
           unifySharedFields context sharedFields Map.empty subRecord
 
-  else
+  else  
+
 
     if Map.null uniqueFields2 then
       do  subRecord <- fresh context (Structure (Record1 uniqueFields1 ext1))
@@ -641,7 +659,8 @@ unifyRecord context (RecordStructure fields1 ext1) (RecordStructure fields2 ext2
           unifySharedFields context sharedFields Map.empty subRecord
 
     else
-      do  let otherFields = Map.union uniqueFields1 uniqueFields2
+      do  
+          let otherFields = Map.union uniqueFields1 uniqueFields2
           ext <- fresh context Type.unnamedFlexVar
           sub1 <- fresh context (Structure (Record1 uniqueFields1 ext))
           sub2 <- fresh context (Structure (Record1 uniqueFields2 ext))
